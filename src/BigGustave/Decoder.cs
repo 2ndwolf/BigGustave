@@ -5,11 +5,15 @@
     internal static class Decoder
     {
         public static (byte bytesPerPixel, byte samplesPerPixel) GetBytesAndSamplesPerPixel(ImageHeader header)
-        {
+        {   
+            Console.WriteLine(header.BitDepth + " VOILA");
+
+            // why correcting the bit depth?
             var bitDepthCorrected = (header.BitDepth + 7) / 8;
 
             var samplesPerPixel = SamplesPerPixel(header);
 
+            // return ((byte)(samplesPerPixel * header.BitDepth), samplesPerPixel);
             return ((byte)(samplesPerPixel * bitDepthCorrected), samplesPerPixel);
         }
 
@@ -19,14 +23,15 @@
             {
                 case InterlaceMethod.None:
                     {
-                        var bytesPerScanline = BytesPerScanline(header, samplesPerPixel);
+                        var bytesPerScanline = (int)BytesPerScanline(header, samplesPerPixel);
 
-                        var currentRowStartByteAbsolute = 1;
+                        var currentRowStartByteAbsolute = 0;
+
                         for (var rowIndex = 0; rowIndex < header.Height; rowIndex++)
                         {
                             var filterType = (FilterType)decompressedData[currentRowStartByteAbsolute - 1];
 
-                            var previousRowStartByteAbsolute = (rowIndex) + (bytesPerScanline * (rowIndex - 1));
+                            var previousRowStartByteAbsolute = (bytesPerScanline * (rowIndex - 1));
 
                             var end = currentRowStartByteAbsolute + bytesPerScanline;
                             for (var currentByteAbsolute = currentRowStartByteAbsolute; currentByteAbsolute < end; currentByteAbsolute++)
@@ -34,7 +39,7 @@
                                 ReverseFilter(decompressedData, filterType, previousRowStartByteAbsolute, currentRowStartByteAbsolute, currentByteAbsolute, currentByteAbsolute - currentRowStartByteAbsolute, bytesPerPixel);
                             }
 
-                            currentRowStartByteAbsolute += bytesPerScanline + 1;
+                            currentRowStartByteAbsolute += bytesPerScanline;
                         }
 
                         return decompressedData;
@@ -72,7 +77,7 @@
                                     }
 
                                     var start = pixelsPerRow * pixelIndex.y + pixelIndex.x * bytesPerPixel;
-                                    Array.ConstrainedCopy(decompressedData, rowStartByte + j * bytesPerPixel, newBytes, start, bytesPerPixel);
+                                    Array.ConstrainedCopy(decompressedData, (rowStartByte + j * bytesPerPixel) % decompressedData.Length, newBytes, start, bytesPerPixel);
                                 }
 
                                 previousStartRowByteAbsolute = rowStartByte;
@@ -90,21 +95,22 @@
         {
             switch (header.ColorType)
             {
-                case ColorType.None:
+                case ColorType.None: //Color type = 0
                     return 1;
-                case ColorType.PaletteUsed:
-                    return 1;
-                case ColorType.ColorUsed:
+                case ColorType.ColorUsed: // Color type = 2
                     return 3;
-                case ColorType.AlphaChannelUsed:
+                case ColorType.ColorUsed | ColorType.PaletteUsed: // Color type = 3
+                    return 1;
+                case ColorType.AlphaChannelUsed: // Color type = 4 (Grayscale + alpha)
                     return 2;
-                case ColorType.ColorUsed | ColorType.AlphaChannelUsed:
+                case ColorType.ColorUsed | ColorType.AlphaChannelUsed: // Color type = 6
                     return 4;
                 default:
-                    return 0;
+                    throw new ArgumentOutOfRangeException($"Invalid Color Type, color type was: {header.ColorType}.");
             }
         }
 
+        //Will this only work with paletted images
         private static int BytesPerScanline(ImageHeader header, byte samplesPerPixel)
         {
             var width = header.Width;
@@ -130,20 +136,20 @@
             byte GetLeftByteValue()
             {
                 var leftIndex = rowByteIndex - bytesPerPixel;
-                var leftValue = leftIndex >= 0 ? data[rowStartByteAbsolute + leftIndex] : (byte)0;
+                var leftValue = leftIndex >= 0 ? data[(rowStartByteAbsolute + leftIndex)  % data.Length] : (byte)0;
                 return leftValue;
             }
 
             byte GetAboveByteValue()
             {
                 var upIndex = previousRowStartByteAbsolute + rowByteIndex;
-                return upIndex >= 0 ? data[upIndex] : (byte)0;
+                return upIndex >= 0 ? data[upIndex % data.Length] : (byte)0;
             }
 
             byte GetAboveLeftByteValue()
             {
                 var index = previousRowStartByteAbsolute + rowByteIndex - bytesPerPixel;
-                return index < previousRowStartByteAbsolute || previousRowStartByteAbsolute < 0 ? (byte)0 : data[index];
+                return index < previousRowStartByteAbsolute || previousRowStartByteAbsolute < 0 ? (byte)0 : data[index % data.Length];
             }
 
             // Moved out of the switch for performance.
@@ -155,7 +161,7 @@
                     return;
                 }
 
-                data[byteAbsolute] += data[above];
+                data[byteAbsolute % data.Length] += data[above % data.Length];
                 return;
             }
             
@@ -167,7 +173,7 @@
                     return;
                 }
 
-                data[byteAbsolute] += data[rowStartByteAbsolute + leftIndex];
+                data[byteAbsolute % data.Length] += data[(rowStartByteAbsolute + leftIndex) % data.Length];
                 return;
             }
 
@@ -176,13 +182,13 @@
                 case FilterType.None:
                     return;
                 case FilterType.Average:
-                    data[byteAbsolute] += (byte)((GetLeftByteValue() + GetAboveByteValue()) / 2);
+                    data[byteAbsolute % data.Length] += (byte)((GetLeftByteValue() + GetAboveByteValue()) / 2);
                     break;
                 case FilterType.Paeth:
                     var a = GetLeftByteValue();
                     var b = GetAboveByteValue();
                     var c = GetAboveLeftByteValue();
-                    data[byteAbsolute] += GetPaethValue(a, b, c);
+                    data[byteAbsolute % data.Length] += GetPaethValue(a, b, c);
                     break;
                 default:
                     throw new ArgumentOutOfRangeException(nameof(type), type, null);
@@ -206,6 +212,62 @@
             }
 
             return pb <= pc ? b : c;
+        }
+
+        public static byte[] UnpackBytes(byte[] bytesIn, int bitDepth){
+            byte[] bytesOut = new byte[bytesIn.Length * (8 / bitDepth)];
+
+            switch(bitDepth){
+                case 8:
+                    bytesOut = bytesIn;
+                    break;
+                case 4:
+                    for(var i = 0; i < bytesIn.Length; i++){
+                        bytesOut[i * 2] = (byte)(bytesIn[i] >> 4);
+                        bytesOut[i * 2 + 1] = (byte)(bytesIn[i] & 0x0f);
+                    }
+                    break;
+                case 2:
+                    for(var i = 0; i < bytesIn.Length; i++){
+                        bytesOut[i * 4] = 0;
+                        bytesOut[i * 4 + 1] = 0;
+                        bytesOut[i * 4 + 2] = 0;
+                        bytesOut[i * 4 + 3] = 0;
+                    }
+                    break;
+                case 1:
+                    for(var i = 0; i < bytesIn.Length; i++){
+                        bytesOut[i * 8] = 0;
+                        bytesOut[i * 8 + 1] = 0;
+                        bytesOut[i * 8 + 2] = 0;
+                        bytesOut[i * 8 + 3] = 0;
+                        bytesOut[i * 8 + 4] = 0;
+                        bytesOut[i * 8 + 5] = 0;
+                        bytesOut[i * 8 + 6] = 0;
+                        bytesOut[i * 8 + 7] = 0;
+                    }
+                    break;
+                default:
+                    throw new InvalidOperationException($"Invalid bit depth: {bitDepth}.");
+            }
+
+            return bytesOut;
+
+        }
+
+        public static byte[] RemoveBlackPixels(byte[] bytesOut, ImageHeader imageHeader){
+            int j = 0;
+            byte[] noBlackPixel = new byte[(imageHeader.Width * imageHeader.Height) / (8 / imageHeader.BitDepth)];
+
+            for(var i = 0; i < bytesOut.Length; i++){
+                if(i % (imageHeader.Width / (8 / imageHeader.BitDepth)) == 0){
+                } else{
+                    noBlackPixel[j] = bytesOut[i];
+                    j++;
+                }
+            }
+
+            return noBlackPixel;
         }
     }
 }
