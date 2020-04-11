@@ -13,9 +13,9 @@
 
         }
 
-        public Pixel GetPixel(int index, byte[] imgdat)
+        public Pixel GetPixel(int index)
         {
-            var start = (imgdat[index % imgdat.Length] % (Data.Length / 3)) * 3;
+            var start = (index % (Data.Length / 3)) * 3;
 
             byte[] pix = {Data[start], Data[start + 1], Data[start + 2]};
 

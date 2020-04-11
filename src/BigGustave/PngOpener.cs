@@ -60,8 +60,11 @@
                                     {
                                         throw new InvalidOperationException($"Palette data must be multiple of 3, got {header.Length}.");
                                     }
-
-                                    palette = new Palette(bytes);
+                                    if(palette == null){
+                                        palette = new Palette(bytes,  null);
+                                    } else {
+                                        palette.Data = bytes;
+                                    }
 
                                     break;
                                 case "IDAT":
@@ -74,6 +77,28 @@
                                     throw new NotSupportedException($"Encountered critical header {header} which was not recognised.");
                             }
                         }
+                        // else if(header.IsPublic) {
+                        //     switch (header.Name)
+                        //     {
+                        //         case "tRNS":
+
+                        //          Console.WriteLine("[{0}]", string.Join(", ", bytes));
+
+                        //             byte[] tRNS = {bytes[bytes.Length - 3], bytes[bytes.Length - 2], bytes[bytes.Length - 1]};
+                        //         // Console.WriteLine("BOB IS MY FIRENDS");
+                        //             if(palette == null){
+                        //                 palette = new Palette(null, tRNS);
+                        //             } else {
+                        //                 palette.Transparency = tRNS;
+                        //             }
+                        //             break;
+                        //         case "pHYs":
+                                    
+                        //             break;
+                        //         default:
+                        //             break;
+                        //     }
+                        // }
 
                         read = stream.Read(crc, 0, crc.Length);
                         if (read != 4)
@@ -92,7 +117,7 @@
                         chunkVisitor?.Visit(stream, imageHeader, header, bytes, crc);
                     }
 
-                    memoryStream.Flush();
+                    // memoryStream.Flush();
                     memoryStream.Seek(2, SeekOrigin.Begin);
 
                     using (var deflateStream = new DeflateStream(memoryStream, CompressionMode.Decompress))
@@ -104,11 +129,21 @@
 
                 var bytesOut = output.ToArray();
 
+                // Console.WriteLine("[{0}]", string.Join(", ", bytesOut));
                 var (bytesPerPixel, samplesPerPixel) = Decoder.GetBytesAndSamplesPerPixel(imageHeader);
 
                 bytesOut = Decoder.Decode(bytesOut, imageHeader, bytesPerPixel, samplesPerPixel);
 
-                return new Png(imageHeader, new RawPngData(bytesOut, bytesPerPixel, imageHeader.Width, imageHeader.InterlaceMethod, palette, imageHeader.ColorType));
+                if(palette != null){
+
+                    // bytesOut = Decoder.RemoveBlackPixels(bytesOut, imageHeader);
+
+                    bytesOut = Decoder.UnpackBytes(bytesOut, imageHeader.BitDepth);
+
+                }
+                
+
+                return new Png(imageHeader, new RawPngData(bytesOut, bytesPerPixel, imageHeader.Width, imageHeader.InterlaceMethod, palette, imageHeader.ColorType, imageHeader.BitDepth));
             }
         }
 

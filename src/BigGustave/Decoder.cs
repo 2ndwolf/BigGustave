@@ -23,15 +23,14 @@
             {
                 case InterlaceMethod.None:
                     {
-                        var bytesPerScanline = (int)BytesPerScanline(header, samplesPerPixel);
+                        var bytesPerScanline = BytesPerScanline(header, samplesPerPixel);
 
-                        var currentRowStartByteAbsolute = 0;
-
+                        var currentRowStartByteAbsolute = 1;
                         for (var rowIndex = 0; rowIndex < header.Height; rowIndex++)
                         {
                             var filterType = (FilterType)decompressedData[currentRowStartByteAbsolute - 1];
 
-                            var previousRowStartByteAbsolute = (bytesPerScanline * (rowIndex - 1));
+                            var previousRowStartByteAbsolute = (rowIndex) + (bytesPerScanline * (rowIndex - 1));
 
                             var end = currentRowStartByteAbsolute + bytesPerScanline;
                             for (var currentByteAbsolute = currentRowStartByteAbsolute; currentByteAbsolute < end; currentByteAbsolute++)
@@ -39,7 +38,7 @@
                                 ReverseFilter(decompressedData, filterType, previousRowStartByteAbsolute, currentRowStartByteAbsolute, currentByteAbsolute, currentByteAbsolute - currentRowStartByteAbsolute, bytesPerPixel);
                             }
 
-                            currentRowStartByteAbsolute += bytesPerScanline;
+                            currentRowStartByteAbsolute += bytesPerScanline + 1;
                         }
 
                         return decompressedData;

@@ -13,6 +13,7 @@
         private readonly Palette palette;
         private readonly ColorType colorType;
         private readonly int rowOffset;
+        private readonly int bitDepth;
 
         /// <summary>
         /// Create a new <see cref="RawPngData"/>.
@@ -23,7 +24,8 @@
         /// <param name="interlaceMethod">The interlace method used.</param>
         /// <param name="palette">The palette for images using indexed colors.</param>
         /// <param name="colorType">The color type.</param>
-        public RawPngData(byte[] data, int bytesPerPixel, int width, InterlaceMethod interlaceMethod, Palette palette, ColorType colorType)
+        /// <param name="bitDepth">The bit depth.</param>
+        public RawPngData(byte[] data, int bytesPerPixel, int width, InterlaceMethod interlaceMethod, Palette palette, ColorType colorType, int bitDepth)
         {
             if (width < 0)
             {
@@ -35,16 +37,18 @@
             this.width = width;
             this.palette = palette;
             this.colorType = colorType;
+            this.bitDepth = bitDepth;
             rowOffset = interlaceMethod == InterlaceMethod.Adam7 ? 0 : 1;
         }
 
         public Pixel GetPixel(int x, int y)
         {
-            var rowStartPixel = (rowOffset + (rowOffset * y)) + (bytesPerPixel * width * y);
+            var rowStartPixel = (rowOffset * y) + (bytesPerPixel * width * y);
 
             var pixelStartIndex = rowStartPixel + (bytesPerPixel * x);
 
-            var first = data[pixelStartIndex];
+            byte first = data[pixelStartIndex];
+
 
             if (palette != null)
             {
